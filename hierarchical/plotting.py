@@ -19,48 +19,90 @@ sns.set_theme(
     font_scale=1.75,  # 1.75, 2, ...
 )
 
-def cos_heatmap(mats, titles = None, figsize = (19, 8),
-                labels = None,
-                cmap=None, use_absvals=False, save_to = None):
-    fig = plt.figure(figsize=figsize)
-    gs = gridspec.GridSpec(1, len(mats), wspace=0)
+# In hierarchical/plotting.py
+# ... (other imports) ...
+# from .category import category_to_indices # This import is for show_evaluation, not cos_heatmap
+# sns.set_theme(...) # Keep your theme settings
 
-    vmin = -0.001 if use_absvals else -1.001
-    vmax = 1.001
+def cos_heatmap(mats, titles=None, figsize=(19, 8),
+                labels=None, # These are the tick labels
+                cmap=None, use_absvals=False, save_to=None,
+                xticklabels_rotation=90, yticklabels_fontsize=8, xticklabels_fontsize=8):
+    fig = plt.figure(figsize=figsize)
+    
+    num_mats = len(mats)
+    # Adjust GridSpec to try and give more room if y-labels are present
+    left_margin = 0.25 if labels and num_mats > 0 else 0.05
+    right_margin = 0.85 # For colorbar
+    gs_wspace = 0.15 if labels and num_mats > 1 else 0.05
+    
+    gs = gridspec.GridSpec(1, num_mats, wspace=gs_wspace, left=left_margin, right=right_margin, bottom=0.15, top=0.90)
+
+    vmin = 0.0 if use_absvals else -1.0
+    vmax = 1.0
 
     if cmap is None:
-        # darker defaults
-        cmap = "mako" if use_absvals else "icefire"
+        cmap = "viridis" if use_absvals else "vlag" # vlag is good for diverging -1 to 1
 
     ims = []
-    for i in range(len(mats)):
+    for i in range(num_mats):
         ax = plt.subplot(gs[0, i])
-        im = ax.imshow(mats[i], aspect = 'equal', cmap=cmap,
+        mat_to_plot = mats[i]
+        if isinstance(mat_to_plot, torch.Tensor):
+            mat_to_plot = mat_to_plot.cpu().numpy()
+        
+        # Consider 'auto' for aspect if you have many labels making one dimension much larger
+        current_aspect = 'auto' if (labels and len(labels) > 2 * mat_to_plot.shape[1]) or \
+                                   (labels and mat_to_plot.shape[0] > 2 * len(labels)) else 'equal'
+                                   
+        im = ax.imshow(mat_to_plot, aspect=current_aspect, cmap=cmap,
                        vmin=vmin, vmax=vmax, interpolation='nearest')
         ims.append(im)
-        if labels != None:
-            ytick = list(range(len(labels)))
-            ax.set_yticks(ytick)
-            ax.set_xticks(ytick)
-            if i == 0:
-                ax.set_yticklabels(labels)
-                # ax.set_xticklabels(labels, rotation = 60, ha = "right")
-                ax.set_xticklabels([])
+
+        if labels is not None and len(labels) > 0 and \
+           len(labels) == mat_to_plot.shape[0] and \
+           len(labels) == mat_to_plot.shape[1]: # Check for square matrix if applying to both axes
+            
+            tick_positions = np.arange(len(labels))
+            ax.set_xticks(tick_positions)
+            ax.set_yticks(tick_positions)
+            
+            if i == 0: # Y-labels only on the first plot
+                ax.set_yticklabels(labels, fontsize=yticklabels_fontsize)
             else:
                 ax.set_yticklabels([])
-                ax.set_xticklabels([])
             
-        if titles != None:
-            ax.set_title(titles[i])
+            # X-labels on all plots, rotated
+            ax.set_xticklabels(labels, rotation=xticklabels_rotation, ha="right", fontsize=xticklabels_fontsize)
+        else: 
+            ax.set_xticks([])
+            ax.set_yticks([])
+            
+        if titles is not None and i < len(titles):
+            ax.set_title(titles[i], fontsize=14) # Control title fontsize
 
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="5%", pad=0.2)
-    cbar = plt.colorbar(ims[-1], cax=cax, orientation='vertical')
+    if ims: 
+        # Position colorbar carefully
+        cbar_ax_left = gs.right + 0.02 
+        cbar_ax_bottom = gs.bottom 
+        cbar_ax_width = 0.03
+        cbar_ax_height = gs.top - gs.bottom
+        
+        # Ensure cbar_ax_left + cbar_ax_width is not > 1
+        if cbar_ax_left + cbar_ax_width > 0.98:
+            cbar_ax_left = 0.98 - cbar_ax_width
 
-    plt.tight_layout()
-    if save_to != None:
-        plt.savefig(save_to, bbox_inches='tight')
-    plt.show()
+        cbar_ax = fig.add_axes([cbar_ax_left, cbar_ax_bottom, cbar_ax_width, cbar_ax_height])
+        cbar = fig.colorbar(ims[-1], cax=cbar_ax, orientation='vertical')
+    
+    # Using fig.tight_layout() can sometimes fight with add_axes for colorbar.
+    # If GridSpec is well defined, it might not be needed or use with padding.
+    # fig.tight_layout(pad=1.0) 
+    
+    if save_to is not None:
+        plt.savefig(save_to, bbox_inches='tight', dpi=300)
+    # plt.show() # Let notebook or CLI control explicit show
+    return fig
 
 def proj_2d(dir1, dir2, unembed, vocab_list, ax,
               added_inds=None,
