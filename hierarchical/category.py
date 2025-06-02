@@ -1,10 +1,7 @@
-import json
-import networkx as nx
-
 import torch
 from sklearn.covariance import ledoit_wolf
-
-# Add this function to your existing hierarchical/category.py
+import numpy as np
+import inflect
 import json
 import networkx as nx
 # (Keep other imports like torch, inflect, Ledoit-Wolf at the top of the file)
